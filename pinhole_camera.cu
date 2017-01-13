@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2016, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,6 +28,9 @@
 
 #include <optix_world.h>
 #include "helpers.h"
+#include <optix.h>
+#include <optix_math.h>
+#include "commonStructs.h"
 
 using namespace optix;
 
@@ -37,6 +40,9 @@ struct PerRayData_radiance
   float  importance;
   int    depth;
 };
+
+rtDeclareVariable(PerRayData_radiance, prd_radiance, rtPayload, );
+rtDeclareVariable(optix::Ray, ray,          rtCurrentRay, );
 
 rtDeclareVariable(float3,        eye, , );
 rtDeclareVariable(float3,        U, , );
@@ -57,12 +63,12 @@ rtDeclareVariable(float, time_view_scale, , ) = 1e-6f;
 RT_PROGRAM void pinhole_camera()
 {
 #ifdef TIME_VIEW
-  clock_t t0 = clock(); 
+  clock_t t0 = clock();
 #endif
   float2 d = make_float2(launch_index) / make_float2(launch_dim) * 2.f - 1.f;
   float3 ray_origin = eye;
   float3 ray_direction = normalize(d.x*U + d.y*V + W);
-  
+
   optix::Ray ray = optix::make_Ray(ray_origin, ray_direction, radiance_ray_type, scene_epsilon, RT_DEFAULT_MAX);
 
   PerRayData_radiance prd;
@@ -72,11 +78,11 @@ RT_PROGRAM void pinhole_camera()
   rtTrace(top_object, ray, prd);
 
 #ifdef TIME_VIEW
-  clock_t t1 = clock(); 
- 
+  clock_t t1 = clock();
+
   float expected_fps   = 1.0f;
   float pixel_time     = ( t1 - t0 ) * time_view_scale * expected_fps;
-  output_buffer[launch_index] = make_color( make_float3(  pixel_time ) ); 
+  output_buffer[launch_index] = make_color( make_float3(  pixel_time ) );
 #else
   output_buffer[launch_index] = make_color( prd.result );
 #endif
@@ -87,4 +93,14 @@ RT_PROGRAM void exception()
   const unsigned int code = rtGetExceptionCode();
   rtPrintf( "Caught exception 0x%X at launch index (%d,%d)\n", code, launch_index.x, launch_index.y );
   output_buffer[launch_index] = make_color( bad_color );
+}
+
+rtTextureSampler<float4, 2> envmap;
+RT_PROGRAM void envmap_miss()
+{
+  float theta = atan2f( ray.direction.x, ray.direction.z );
+  float phi   = M_PIf * 0.5f -  acosf( ray.direction.y );
+  float u     = (theta + M_PIf) * (0.5f * M_1_PIf);
+  float v     = 0.5f * ( 1.0f + sin(phi) );
+  prd_radiance.result = make_float3( tex2D(envmap, u, v) );
 }
