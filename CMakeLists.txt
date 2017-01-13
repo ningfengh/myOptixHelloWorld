@@ -32,7 +32,7 @@ if(GLUT_FOUND AND OPENGL_FOUND)
     include_directories(${GLUT_INCLUDE_DIR})
     add_definitions(-DGLUT_FOUND -DGLUT_NO_LIB_PRAGMA)
 
-    OPTIX_add_sample_executable( myHelloWorld 
+    OPTIX_add_sample_executable( myHelloWorld
         myHelloWorld.cpp
 
         # These files are common among multiple samples
@@ -40,7 +40,6 @@ if(GLUT_FOUND AND OPENGL_FOUND)
         constantbg.cu
         helpers.h
         pinhole_camera.cu
-
         )
 else()
     # GLUT or OpenGL not found

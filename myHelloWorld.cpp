@@ -177,9 +177,16 @@ void createContext()
     context["bad_color"]->setFloat( 1.0f, 0.0f, 1.0f );
 
     // Miss program
+    /*
     ptx_path = ptxPath( "constantbg.cu" );
     context->setMissProgram( 0, context->createProgramFromPTXFile( ptx_path, "miss" ) );
     context["bg_color"]->setFloat( 0.34f, 0.55f, 0.85f );
+    */
+
+    context->setMissProgram( 0, context->createProgramFromPTXFile( ptx_path, "envmap_miss" ) );
+    const float3 default_color = make_float3(1.0f, 1.0f, 1.0f);
+    const std::string texpath = std::string( sutil::samplesDir() ) + "/data/" + std::string( "CedarCity.hdr" );
+    context["envmap"]->setTextureSampler( sutil::loadTexture( context, texpath, default_color) );
 }
 
 
