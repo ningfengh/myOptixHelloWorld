@@ -33,14 +33,8 @@
 #include "commonStructs.h"
 #include "random.h"
 
-using namespace optix;
 
-struct PerRayData_radiance
-{
-  float3 result;
-  //float  importance;
-  int    depth;
-};
+using namespace optix;
 
 struct PerRayData_pathtrace
 {
@@ -64,7 +58,6 @@ struct PerRayData_pathtrace_shadow
 rtDeclareVariable(float3, shading_normal,   attribute shading_normal, );
 rtDeclareVariable(float3, geometric_normal, attribute geometric_normal, );
 
-rtDeclareVariable(PerRayData_radiance, prd_radiance, rtPayload, );
 rtDeclareVariable(PerRayData_pathtrace, current_prd, rtPayload, );
 
 rtDeclareVariable(optix::Ray, ray,          rtCurrentRay, );
@@ -95,30 +88,27 @@ RT_PROGRAM void pathtrace_camera()
 {
     size_t2 screen = output_buffer.size();
 
-    float2 inv_screen = 1.f/make_float2(screen) *2.f;
-    // TODO: what is launch_index ???
-    // This is the coordinates
+    float2 inv_screen = 1.0f/make_float2(screen) * 2.f;
     float2 pixel = (make_float2(launch_index)) * inv_screen - 1.f;
 
     float2 jitter_scale = inv_screen / sqrt_num_samples;
-    unsigned int samples_per_pixel = sqrt_num_samples * sqrt_num_samples;
-    float3 result = make_float3(0.f);
+    unsigned int samples_per_pixel = sqrt_num_samples*sqrt_num_samples;
+    float3 result = make_float3(0.0f);
 
-    unsigned int seed = tea<16>(screen.x*launch_index.y + launch_index.x, frame_number);
+    unsigned int seed = tea<16>(screen.x*launch_index.y+launch_index.x, frame_number);
     do
     {
         //
         // Sample pixel using jittering
         //
-
-        unsigned int x = samples_per_pixel % sqrt_num_samples;
-        unsigned int y = samples_per_pixel / sqrt_num_samples;
+        unsigned int x = samples_per_pixel%sqrt_num_samples;
+        unsigned int y = samples_per_pixel/sqrt_num_samples;
         float2 jitter = make_float2(x-rnd(seed), y-rnd(seed));
-        float2 d = pixel + jitter * jitter_scale;
+        float2 d = pixel + jitter*jitter_scale;
         float3 ray_origin = eye;
         float3 ray_direction = normalize(d.x*U + d.y*V + W);
 
-        // Initialize per-ray data
+        // Initialze per-ray data
         PerRayData_pathtrace prd;
         prd.result = make_float3(0.f);
         prd.attenuation = make_float3(1.f);
@@ -129,48 +119,57 @@ RT_PROGRAM void pathtrace_camera()
 
         // Each iteration is a segment of the ray path.  The closest hit will
         // return new segments to be traced here.
-        for (;;)
+        for(;;)
         {
-            Ray ray = make_Ray(ray_origin, ray_direction, pathtrace_ray_type,
-                                scene_epsilon, RT_DEFAULT_MAX);
+            Ray ray = make_Ray(ray_origin, ray_direction, pathtrace_ray_type, scene_epsilon, RT_DEFAULT_MAX);
             rtTrace(top_object, ray, prd);
 
-            if (prd.done)
+            if(prd.done)
             {
                 // We have hit the background or a luminaire
                 prd.result += prd.radiance * prd.attenuation;
                 break;
             }
 
+
+            // DEBUG
+            //if (prd.depth ==1 ) {
+            //    break;
+            //}
             // Russian roulette termination
-            if (prd.depth >= rr_begin_depth)
+            if(prd.depth >= rr_begin_depth)
             {
                 float pcont = fmaxf(prd.attenuation);
                 if(rnd(prd.seed) >= pcont)
                     break;
                 prd.attenuation /= pcont;
             }
+
             prd.depth++;
             prd.result += prd.radiance * prd.attenuation;
 
-            //Update ray data for the next path segment
+            // Update ray data for the next path segment
             ray_origin = prd.origin;
             ray_direction = prd.direction;
         }
+
         result += prd.result;
         seed = prd.seed;
-
     } while (--samples_per_pixel);
 
     //
     // Update the output buffer
+    //
     float3 pixel_color = result/(sqrt_num_samples*sqrt_num_samples);
 
-    if (frame_number > 1){
-        float a = 1.0f / (float) frame_number;
+    if (frame_number > 1)
+    {
+        float a = 1.0f / (float)frame_number;
         float3 old_color = make_float3(output_buffer[launch_index]);
-        output_buffer[launch_index] = make_float4(lerp(old_color, pixel_color, a), 1.0f);
-    } else {
+        output_buffer[launch_index] = make_float4( lerp( old_color, pixel_color, a ), 1.0f );
+    }
+    else
+    {
         output_buffer[launch_index] = make_float4(pixel_color, 1.0f);
     }
 }
@@ -193,6 +192,7 @@ RT_PROGRAM void envmap_miss()
   current_prd.done = true;
 }
 
+//
 // Implements basic lambertian surface shading model
 //
 rtDeclareVariable(float3,     diffuse_color, , );
@@ -225,4 +225,83 @@ RT_PROGRAM void diffuse()
   current_prd.attenuation = current_prd.attenuation * diffuse_color;
   current_prd.countEmitted = false;
 
+}
+
+rtDeclareVariable(float3,       mirror_color, , );
+
+RT_PROGRAM void mirror()
+{
+    float3 world_geometric_normal   = normalize( rtTransformNormal( RT_OBJECT_TO_WORLD, geometric_normal ) );
+    float3 world_shading_normal = normalize( rtTransformNormal( RT_OBJECT_TO_WORLD, shading_normal ) );
+    //float3 ffnormal     = faceforward( world_shading_normal, -ray.direction, world_geometric_normal );
+    float3 ffnormal = world_shading_normal;
+    float3 hitpoint = ray.origin + t_hit * ray.direction;
+
+    //
+    // Generate a reflection ray. This will be deterministic
+    //
+
+    current_prd.origin = hitpoint;
+    current_prd.direction = reflect(ray.direction, ffnormal);
+
+    current_prd.attenuation = current_prd.attenuation * mirror_color;
+    current_prd.countEmitted = false;
+    current_prd.radiance = make_float3(0.f);
+
+}
+
+rtDeclareVariable(float3,       glass_color, , );
+
+RT_PROGRAM void glass()
+{
+    float3 world_geometric_normal   = normalize( rtTransformNormal( RT_OBJECT_TO_WORLD, geometric_normal ) );
+    float3 world_shading_normal = normalize( rtTransformNormal( RT_OBJECT_TO_WORLD, shading_normal ) );
+    //float3 ffnormal = world_shading_normal;
+    float3 hitpoint = ray.origin + t_hit * ray.direction;
+
+    current_prd.radiance = make_float3(0.f);
+    //
+    // Generate both reflection and refraction rays
+    // Use Russian roulette to decide which ray to trace
+    //
+
+    float3 t;
+    float reflection = 1.0f;
+    float3 r = reflect(ray.direction, world_shading_normal);
+    // check if we have total internal reflection
+    if (refract(t, ray.direction, world_shading_normal, 1.5f))
+    {
+        // check for external or internal reflection
+        float cos_theta = dot(ray.direction, world_shading_normal);
+        if (cos_theta < 0.0f) {
+            cos_theta = -cos_theta;
+        } else {
+            cos_theta = dot(t, world_shading_normal);
+        }
+        reflection = fresnel_schlick(cos_theta, /* exponent */ 5.f,
+                                                /* minimum */ 0.f,
+                                                /* maximum */ 1.f);
+
+    } else {
+        // TIR, early out
+        current_prd.origin = hitpoint;
+        current_prd.direction = r;
+
+        current_prd.attenuation = current_prd.attenuation * glass_color;
+        current_prd.countEmitted = false;
+        return;
+    }
+
+    // Russian roulette to split reflection and refraction rays
+    if( rnd(current_prd.seed) <= reflection ){
+        current_prd.origin = hitpoint;
+        current_prd.direction = r;
+        current_prd.attenuation = current_prd.attenuation * glass_color;
+        current_prd.countEmitted = false;
+    } else {
+        current_prd.origin = hitpoint;
+        current_prd.direction = t;
+        current_prd.attenuation = current_prd.attenuation * glass_color;
+        current_prd.countEmitted = false;
+    }
 }
