@@ -72,11 +72,16 @@ uint32_t       height = 768u;
 bool           use_pbo = true;
 optix::Aabb    aabb;
 
+int            frame_number = 1;
+int            sqrt_num_samples = 3;
+int            rr_begin_depth = 5;
+
 // Camera state
 float3         camera_up;
 float3         camera_lookat;
 float3         camera_eye;
 Matrix4x4      camera_rotate;
+bool           camera_changed = true;
 sutil::Arcball arcball;
 
 // Mouse state
@@ -156,24 +161,27 @@ void createContext()
 {
     // Set up context
     context = Context::create();
-    context->setRayTypeCount( 2 );
+    context->setRayTypeCount( 1 );
     context->setEntryPointCount( 1 );
-
+    context->setStackSize( 1800 );
+    context[ "pathtrace_ray_type"             ]->setUint( 0u );
     context["radiance_ray_type"]->setUint( 0u );
-    context["shadow_ray_type"  ]->setUint( 1u );
-    context["scene_epsilon"    ]->setFloat( 1.e-4f );
-
-    Buffer buffer = sutil::createOutputBuffer( context, RT_FORMAT_UNSIGNED_BYTE4, width, height, use_pbo );
+    //context["shadow_ray_type"  ]->setUint( 1u );
+    context["scene_epsilon"    ]->setFloat( 1.e-2f );
+    context[ "rr_begin_depth"                 ]->setUint( rr_begin_depth );
+    Buffer buffer = sutil::createOutputBuffer( context, RT_FORMAT_FLOAT4, width, height, use_pbo );
     context["output_buffer"]->set( buffer );
 
     // Ray generation program
     std::string ptx_path( ptxPath( "pinhole_camera.cu" ) );
-    Program ray_gen_program = context->createProgramFromPTXFile( ptx_path, "pinhole_camera" );
+    Program ray_gen_program = context->createProgramFromPTXFile( ptx_path, "pathtrace_camera");
     context->setRayGenerationProgram( 0, ray_gen_program );
 
     // Exception program
     Program exception_program = context->createProgramFromPTXFile( ptx_path, "exception" );
     context->setExceptionProgram( 0, exception_program );
+
+    context["sqrt_num_samples" ]->setUint( sqrt_num_samples );
     context["bad_color"]->setFloat( 1.0f, 0.0f, 1.0f );
 
     // Miss program
@@ -184,7 +192,7 @@ void createContext()
     */
 
     context->setMissProgram( 0, context->createProgramFromPTXFile( ptx_path, "envmap_miss" ) );
-    const float3 default_color = make_float3(1.0f, 1.0f, 1.0f);
+    const float3 default_color = make_float3(0.0f, 0.0f, 0.0f);
     const std::string texpath = std::string( sutil::samplesDir() ) + "/data/" + std::string( "CedarCity.hdr" );
     context["envmap"]->setTextureSampler( sutil::loadTexture( context, texpath, default_color) );
 }
@@ -195,10 +203,12 @@ void loadMesh( const std::string& filename )
     // Create Material and assign it to geometry_group
     std::string ptx_path( ptxPath( "pinhole_camera.cu" ) );
     Material matl = context->createMaterial();
-    Program shade = context->createProgramFromPTXFile(ptx_path, "closest_hit_radiance1");
+    Program shade = context->createProgramFromPTXFile(ptx_path, "glass");
     matl->setClosestHitProgram(0, shade);
-    matl["Ka"]->setFloat( 0.3f, 0.0f, 0.0f );
-    matl["Kd"]->setFloat( 0.9f, 0.9f, 0.9f );
+    matl["diffuse_color"]->setFloat( 0.5f, 0.5f, 0.5f );
+    matl["mirror_color"]->setFloat( 0.7f, 0.7f, 0.7f );
+    matl["glass_color"]->setFloat( 0.9f, 0.9f, 0.9f );
+
 
 
     OptiXMesh mesh;
@@ -288,10 +298,15 @@ void updateCamera()
 
     camera_rotate = Matrix4x4::identity();
 
+    context[ "frame_number" ]->setUint( frame_number++ );
     context["eye"]->setFloat( camera_eye );
     context["U"  ]->setFloat( camera_u );
     context["V"  ]->setFloat( camera_v );
     context["W"  ]->setFloat( camera_w );
+
+    if( camera_changed ) // reset accumulation
+        frame_number = 1;
+    camera_changed = false;
 }
 
 
@@ -404,6 +419,7 @@ void glutMouseMotion( int x, int y)
         const float dmax = fabsf( dx ) > fabs( dy ) ? dx : dy;
         const float scale = fminf( dmax, 0.9f );
         camera_eye = camera_eye + (camera_lookat - camera_eye)*scale;
+        camera_changed = true;
     }
     else if( mouse_button == GLUT_LEFT_BUTTON )
     {
@@ -416,6 +432,7 @@ void glutMouseMotion( int x, int y)
         const float2 b = { to.x   / width, to.y   / height };
 
         camera_rotate = arcball.rotate( b, a );
+        camera_changed = true;
     }
 
     mouse_prev_pos = make_int2( x, y );
@@ -425,6 +442,9 @@ void glutMouseMotion( int x, int y)
 void glutResize( int w, int h )
 {
     if ( w == (int)width && h == (int)height ) return;
+
+    camera_changed = true;
+    bool           camera_changed = true;
 
     width  = w;
     height = h;
