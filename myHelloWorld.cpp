@@ -192,9 +192,21 @@ void createContext()
 
 void loadMesh( const std::string& filename )
 {
+    // Create Material and assign it to geometry_group
+    std::string ptx_path( ptxPath( "pinhole_camera.cu" ) );
+    Material matl = context->createMaterial();
+    Program shade = context->createProgramFromPTXFile(ptx_path, "closest_hit_radiance1");
+    matl->setClosestHitProgram(0, shade);
+    matl["Ka"]->setFloat( 0.3f, 0.0f, 0.0f );
+    matl["Kd"]->setFloat( 0.9f, 0.9f, 0.9f );
+
+
     OptiXMesh mesh;
     mesh.context = context;
+    mesh.material = matl;
     loadMesh( filename, mesh );
+
+
 
     aabb.set( mesh.bbox_min, mesh.bbox_max );
 
@@ -203,6 +215,10 @@ void loadMesh( const std::string& filename )
     geometry_group->setAcceleration( context->createAcceleration( "Trbvh" ) );
     context[ "top_object"   ]->set( geometry_group );
     context[ "top_shadower" ]->set( geometry_group );
+
+
+
+
 }
 
 
