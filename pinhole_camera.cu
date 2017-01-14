@@ -37,7 +37,7 @@ using namespace optix;
 struct PerRayData_radiance
 {
   float3 result;
-  float  importance;
+  //float  importance;
   int    depth;
 };
 
@@ -66,9 +66,7 @@ rtDeclareVariable(float, time_view_scale, , ) = 1e-6f;
 
 RT_PROGRAM void pinhole_camera()
 {
-#ifdef TIME_VIEW
-  clock_t t0 = clock();
-#endif
+
   float2 d = make_float2(launch_index) / make_float2(launch_dim) * 2.f - 1.f;
   float3 ray_origin = eye;
   float3 ray_direction = normalize(d.x*U + d.y*V + W);
@@ -76,20 +74,13 @@ RT_PROGRAM void pinhole_camera()
   optix::Ray ray = optix::make_Ray(ray_origin, ray_direction, radiance_ray_type, scene_epsilon, RT_DEFAULT_MAX);
 
   PerRayData_radiance prd;
-  prd.importance = 1.f;
+
   prd.depth = 0;
 
   rtTrace(top_object, ray, prd);
 
-#ifdef TIME_VIEW
-  clock_t t1 = clock();
-
-  float expected_fps   = 1.0f;
-  float pixel_time     = ( t1 - t0 ) * time_view_scale * expected_fps;
-  output_buffer[launch_index] = make_color( make_float3(  pixel_time ) );
-#else
   output_buffer[launch_index] = make_color( prd.result );
-#endif
+
 }
 
 RT_PROGRAM void exception()
