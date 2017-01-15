@@ -131,7 +131,6 @@ RT_PROGRAM void pathtrace_camera()
                 break;
             }
 
-
             // DEBUG
             //if (prd.depth ==1 ) {
             //    break;
@@ -267,12 +266,12 @@ RT_PROGRAM void glass()
 
     float3 t;
     float reflection = 1.0f;
-    float3 r = reflect(ray.direction, world_shading_normal);
+    float3 r = reflect(ray.direction, world_geometric_normal);
     // check if we have total internal reflection
-    if (refract(t, ray.direction, world_shading_normal, 1.5f))
+    if (refract(t, ray.direction, world_geometric_normal, 2.4f))
     {
         // check for external or internal reflection
-        float cos_theta = dot(ray.direction, world_shading_normal);
+        float cos_theta = dot(ray.direction, world_geometric_normal);
         if (cos_theta < 0.0f) {
             cos_theta = -cos_theta;
         } else {
