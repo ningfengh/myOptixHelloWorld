@@ -74,7 +74,7 @@ optix::Aabb    aabb;
 
 int            frame_number = 1;
 int            sqrt_num_samples = 3;
-int            rr_begin_depth = 5;
+int            rr_begin_depth = 50;
 
 // Camera state
 float3         camera_up;
@@ -193,6 +193,8 @@ void createContext()
 
     context->setMissProgram( 0, context->createProgramFromPTXFile( ptx_path, "envmap_miss" ) );
     const float3 default_color = make_float3(0.0f, 0.0f, 0.0f);
+
+    //const std::string texpath = std::string( sutil::samplesDir() ) + "/data/" + std::string( "Warehouse-with-lights.hdr" );
     const std::string texpath = std::string( sutil::samplesDir() ) + "/data/" + std::string( "CedarCity.hdr" );
     context["envmap"]->setTextureSampler( sutil::loadTexture( context, texpath, default_color) );
 }
@@ -207,16 +209,12 @@ void loadMesh( const std::string& filename )
     matl->setClosestHitProgram(0, shade);
     matl["diffuse_color"]->setFloat( 0.5f, 0.5f, 0.5f );
     matl["mirror_color"]->setFloat( 0.7f, 0.7f, 0.7f );
-    matl["glass_color"]->setFloat( 0.9f, 0.9f, 0.9f );
-
-
+    matl["glass_color"]->setFloat( 1.0f, 1.0f, 1.0f );
 
     OptiXMesh mesh;
     mesh.context = context;
     mesh.material = matl;
     loadMesh( filename, mesh );
-
-
 
     aabb.set( mesh.bbox_min, mesh.bbox_max );
 
@@ -225,10 +223,6 @@ void loadMesh( const std::string& filename )
     geometry_group->setAcceleration( context->createAcceleration( "Trbvh" ) );
     context[ "top_object"   ]->set( geometry_group );
     context[ "top_shadower" ]->set( geometry_group );
-
-
-
-
 }
 
 
